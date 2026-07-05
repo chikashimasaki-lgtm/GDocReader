@@ -63,9 +63,16 @@
 
   /* Reading view */
   #reader{
-    font-size:19px; line-height:2.0; max-height:40vh; overflow-y:auto;
+    font-size:var(--reader-fs,19px); line-height:2.0; max-height:40vh; overflow-y:auto;
     padding:4px 2px; -webkit-overflow-scrolling:touch;
   }
+  .reader-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+  .reader-head .lbl{margin:0}
+  .fs-ctrl{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .fs-ctrl button{flex:0 0 auto;width:34px;height:34px;padding:0;font-size:15px;border-radius:8px}
+  .fs-ctrl .fs-val{font-size:12px;color:var(--muted);min-width:34px;text-align:center}
+  .bmk-note{font-size:12px;color:var(--accent);margin:6px 2px 0;display:none;align-items:center;gap:6px}
+  .bmk-note button{flex:0 0 auto;padding:5px 10px;font-size:12px;font-weight:600;border-color:var(--accent);color:var(--accent);background:transparent}
   #reader .sent{transition:background .15s;padding:1px 2px;border-radius:4px}
   #reader .sent.active{background:var(--hlbg);color:var(--hl);font-weight:600}
   #reader .empty{color:var(--muted);font-size:14px}
@@ -119,8 +126,16 @@
   </div>
 
   <div class="card">
-    <label class="lbl">読み上げ位置（タップでその文から再生）</label>
+    <div class="reader-head">
+      <label class="lbl">読み上げ位置（タップでその文から再生）</label>
+      <div class="fs-ctrl">
+        <button id="fsDown" aria-label="文字を小さく">A−</button>
+        <span class="fs-val" id="fsVal">19px</span>
+        <button id="fsUp" aria-label="文字を大きく">A＋</button>
+      </div>
+    </div>
     <div id="reader"><span class="empty">本文を貼り付けると、ここに表示されます。</span></div>
+    <div class="bmk-note" id="bmkNote">🔖 前回の続き（<span id="bmkPos"></span>文目）があります <button id="bmkGo">続きへ移動</button></div>
   </div>
 
   <div class="card">
@@ -217,14 +232,35 @@
     });
   }
 
+  // signature of current text (for bookmark keying)
+  function textSig(t){
+    return t.length + ":" + t.slice(0,24).replace(/\s/g,"");
+  }
+  function saveBookmark(){
+    const raw = $("text").value;
+    store.set("bookmark", {sig:textSig(raw), idx:idx});
+  }
+
   function rebuild(){
     const raw = $("text").value;
     store.set("text", raw);
     const arr = splitSentences(raw);
     sentences = arr.map(text=>({text, el:null}));
+    // restore bookmark position if the text matches the saved one
     idx = 0;
+    const bm = store.get("bookmark", null);
+    const note = $("bmkNote");
+    if(bm && bm.sig===textSig(raw) && bm.idx>0 && bm.idx<sentences.length){
+      idx = bm.idx;
+      $("bmkPos").textContent = bm.idx+1;
+      note.style.display = "flex";
+    } else {
+      note.style.display = "none";
+    }
     renderReader();
+    if(idx>0) highlight(idx);
     updateBar();
+    if(typeof setButtons==="function") setButtons();
   }
 
   function highlight(i){
@@ -278,6 +314,7 @@
   function speakFrom(i){
     if(i>=sentences.length){ finish(); return; }
     idx = i;
+    saveBookmark();
     highlight(idx);
     updateBar();
     const u = new SpeechSynthesisUtterance(sentences[i].text);
@@ -299,11 +336,31 @@
     $("status").textContent = `再生中  (${i+1} / ${sentences.length} 文)`;
   }
 
+  // ---- wake lock (keep screen on while reading) ----
+  let wakeLock = null;
+  async function acquireWakeLock(){
+    try{
+      if("wakeLock" in navigator && !wakeLock){
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", ()=>{ wakeLock = null; });
+      }
+    }catch(e){ /* not supported / denied */ }
+  }
+  async function releaseWakeLock(){
+    try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(e){}
+  }
+  // re-acquire if returning to the tab while still playing
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState==="visible" && playing && !paused) acquireWakeLock();
+  });
+
   function play(){
     if(sentences.length===0){ $("status").textContent = "本文がありません"; return; }
     // iOS: cancel any leftover queue before starting
     synth.cancel();
     playing = true; paused = false;
+    $("bmkNote").style.display = "none";
+    acquireWakeLock();
     setButtons();
     speakFrom(idx>=sentences.length?0:idx);
   }
@@ -314,10 +371,13 @@
       paused = true;
       // iOS Safari pause() is unreliable → cancel and remember position
       synth.cancel();
+      saveBookmark();
+      releaseWakeLock();
       $("status").textContent = "一時停止中";
       $("pauseBtn").innerHTML = '<span class="icon">⏵</span>再開';
     } else {
       paused = false;
+      acquireWakeLock();
       $("pauseBtn").innerHTML = '<span class="icon">⏸</span>一時停止';
       speakFrom(idx);
     }
@@ -326,7 +386,9 @@
   function stop(){
     playing = false; paused = false;
     synth.cancel();
+    releaseWakeLock();
     idx = 0;
+    saveBookmark();
     highlight(-1);
     updateBar();
     setButtons();
@@ -336,8 +398,10 @@
 
   function finish(){
     playing = false; paused = false;
+    releaseWakeLock();
     highlight(-1);
     idx = 0;
+    saveBookmark();
     updateBar();
     setButtons();
     $("status").textContent = "読み上げ完了 ✓";
@@ -354,6 +418,7 @@
     } else {
       highlight(i);
       updateBar();
+      saveBookmark();
     }
   }
 
@@ -380,7 +445,25 @@
   $("pitch").addEventListener("input", e=>{ $("pitchVal").textContent = parseFloat(e.target.value).toFixed(1); store.set("pitch", e.target.value); });
   $("voice").addEventListener("change", e=>store.set("voice", e.target.value));
 
-  $("clearBtn").addEventListener("click", ()=>{ stop(); $("text").value=""; rebuild(); });
+  // ---- font size ----
+  const FS_MIN=14, FS_MAX=34;
+  function applyFontSize(px){
+    px = Math.max(FS_MIN, Math.min(FS_MAX, px));
+    document.documentElement.style.setProperty("--reader-fs", px+"px");
+    $("fsVal").textContent = px+"px";
+    store.set("fs", px);
+    return px;
+  }
+  $("fsUp").addEventListener("click", ()=>applyFontSize((store.get("fs",19))+2));
+  $("fsDown").addEventListener("click", ()=>applyFontSize((store.get("fs",19))-2));
+
+  // ---- bookmark jump ----
+  $("bmkGo").addEventListener("click", ()=>{
+    const bm = store.get("bookmark", null);
+    if(bm && bm.idx>0 && bm.idx<sentences.length){ jumpTo(bm.idx); $("bmkNote").style.display="none"; }
+  });
+
+  $("clearBtn").addEventListener("click", ()=>{ stop(); $("text").value=""; store.set("bookmark",null); rebuild(); });
   $("pasteBtn").addEventListener("click", async ()=>{
     try{
       const t = await navigator.clipboard.readText();
@@ -398,6 +481,7 @@
     $("rate").value = r; $("pitch").value = p;
     $("rateVal").textContent = parseFloat(r).toFixed(1)+"x";
     $("pitchVal").textContent = parseFloat(p).toFixed(1);
+    applyFontSize(store.get("fs",19));
     rebuild();
   })();
 
