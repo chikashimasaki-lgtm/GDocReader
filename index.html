@@ -32,7 +32,7 @@
   }
   header h1{margin:0;font-size:17px;font-weight:600}
   header p{margin:3px 0 0;font-size:12px;color:var(--muted)}
-  main{max-width:760px;margin:0 auto;padding:14px 14px 160px}
+  main{max-width:none;width:100%;margin:0;padding:14px 14px 170px}
 
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px}
   label.lbl{display:block;font-size:12px;color:var(--muted);margin:0 0 6px;font-weight:600}
@@ -145,7 +145,7 @@
     <div class="row" style="margin-top:12px">
       <div class="slider-wrap">
         <div class="top"><span>速度</span><b id="rateVal">1.0x</b></div>
-        <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1">
+        <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1">
       </div>
       <div class="slider-wrap">
         <div class="top"><span>音の高さ</span><b id="pitchVal">1.0</b></div>
@@ -212,7 +212,29 @@
       if(out.length && p.length<=1){ out[out.length-1]+=p; }
       else out.push(p);
     }
-    return out;
+    // split segments that are too long for one utterance (mobile ~15s cutoff)
+    const chunked = [];
+    for(const p of out){ for(const c of splitLong(p)) chunked.push(c); }
+    return chunked;
+  }
+
+  // break an over-long segment at 読点/空白 near the limit, else hard-cut
+  const MAX_CHUNK = 100;
+  function splitLong(s){
+    if(s.length <= MAX_CHUNK) return [s];
+    const res = []; let rest = s;
+    while(rest.length > MAX_CHUNK){
+      let cut = -1;
+      const win = rest.slice(0, MAX_CHUNK);
+      const m = win.match(/[、，,・;；:：\s][^、，,・;；:：\s]*$/);
+      if(m && m.index > MAX_CHUNK*0.4) cut = m.index + 1;
+      if(cut <= 0) cut = MAX_CHUNK;
+      const piece = rest.slice(0, cut).trim();
+      if(piece) res.push(piece);
+      rest = rest.slice(cut);
+    }
+    if(rest.trim()) res.push(rest.trim());
+    return res;
   }
 
   function renderReader(){
@@ -322,9 +344,12 @@
     if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = "ja-JP"; }
     u.rate = parseFloat($("rate").value);
     u.pitch = parseFloat($("pitch").value);
+    u.onstart = ()=>{ lastTick = Date.now(); };
+    u.onboundary = ()=>{ lastTick = Date.now(); };
     u.onend = ()=>{
       if(!playing) return;      // stopped
       if(paused) return;        // will resume manually
+      lastTick = Date.now();
       speakFrom(idx+1);
     };
     u.onerror = (e)=>{
@@ -332,6 +357,7 @@
       $("status").textContent = "エラー: " + e.error;
       finish();
     };
+    lastTick = Date.now();
     synth.speak(u);
     $("status").textContent = `再生中  (${i+1} / ${sentences.length} 文)`;
   }
@@ -361,6 +387,7 @@
     playing = true; paused = false;
     $("bmkNote").style.display = "none";
     acquireWakeLock();
+    startWatchdog();
     setButtons();
     speakFrom(idx>=sentences.length?0:idx);
   }
@@ -373,11 +400,13 @@
       synth.cancel();
       saveBookmark();
       releaseWakeLock();
+      stopWatchdog();
       $("status").textContent = "一時停止中";
       $("pauseBtn").innerHTML = '<span class="icon">⏵</span>再開';
     } else {
       paused = false;
       acquireWakeLock();
+      startWatchdog();
       $("pauseBtn").innerHTML = '<span class="icon">⏸</span>一時停止';
       speakFrom(idx);
     }
@@ -387,6 +416,7 @@
     playing = false; paused = false;
     synth.cancel();
     releaseWakeLock();
+    stopWatchdog();
     idx = 0;
     saveBookmark();
     highlight(-1);
@@ -399,6 +429,7 @@
   function finish(){
     playing = false; paused = false;
     releaseWakeLock();
+    stopWatchdog();
     highlight(-1);
     idx = 0;
     saveBookmark();
@@ -429,11 +460,24 @@
     $("playLabel").textContent = idx>0 && !playing ? "続きから" : "再生";
   }
 
-  // ---- keep speech alive on some browsers (long text workaround) ----
-  // Chrome desktop pauses synthesis after ~15s; nudge it.
-  setInterval(()=>{
-    if(playing && !paused && synth.speaking){ synth.pause(); synth.resume(); }
-  }, 10000);
+  // ---- stall watchdog ----
+  // Mobile browsers can silently stop speech without firing onend.
+  // If nothing has been spoken for a while, resume from the current chunk.
+  let lastTick = 0;
+  let watchdog = null;
+  function startWatchdog(){
+    stopWatchdog();
+    watchdog = setInterval(()=>{
+      if(!playing || paused) return;
+      if(synth.speaking || synth.pending) return;
+      if(Date.now() - lastTick > 2500){
+        // speech died mid-way → restart current chunk
+        synth.cancel();
+        speakFrom(idx);
+      }
+    }, 1000);
+  }
+  function stopWatchdog(){ if(watchdog){ clearInterval(watchdog); watchdog = null; } }
 
   // ---- events ----
   $("text").addEventListener("input", ()=>{ if(!playing) rebuild(); });
