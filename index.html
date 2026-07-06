@@ -55,6 +55,12 @@
   .slider-wrap .top b{color:var(--text);font-weight:600}
   input[type=range]{width:100%;accent-color:var(--accent);height:28px}
 
+  .grp-top{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .grp-top b{color:var(--text);font-weight:600}
+  .speed-group{display:flex;gap:6px}
+  .speed-group button{flex:1;padding:12px 2px;font-size:14px}
+  .speed-group button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
   /* Reading view */
   #reader{
     font-size:var(--reader-fs,19px); line-height:2.0; max-height:40vh; overflow-y:auto;
@@ -136,15 +142,22 @@
     <label class="lbl" for="voice">音声</label>
     <select id="voice"></select>
 
-    <div class="row" style="margin-top:12px">
-      <div class="slider-wrap">
-        <div class="top"><span>速度</span><b id="rateVal">1.0x</b></div>
-        <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1">
+    <div style="margin-top:12px">
+      <div class="grp-top"><span>速度</span><b id="rateVal">1x</b></div>
+      <div class="speed-group" id="speedGroup">
+        <button data-rate="1">1x</button>
+        <button data-rate="1.5">1.5x</button>
+        <button data-rate="2">2x</button>
+        <button data-rate="3">3x</button>
+        <button data-rate="4">4x</button>
+        <button data-rate="5">5x</button>
       </div>
-      <div class="slider-wrap">
-        <div class="top"><span>音の高さ</span><b id="pitchVal">1.0</b></div>
-        <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
-      </div>
+      <input type="hidden" id="rate" value="1">
+    </div>
+
+    <div class="slider-wrap" style="margin-top:14px">
+      <div class="top"><span>音の高さ</span><b id="pitchVal">1.0</b></div>
+      <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
     </div>
   </div>
 </main>
@@ -483,7 +496,23 @@
   $("pauseBtn").addEventListener("click", pause);
   $("stopBtn").addEventListener("click", stop);
 
-  $("rate").addEventListener("input", e=>{ $("rateVal").textContent = parseFloat(e.target.value).toFixed(1)+"x"; store.set("rate", e.target.value); });
+  // ---- speed presets ----
+  function setRate(r){
+    r = parseFloat(r);
+    $("rate").value = r;
+    $("rateVal").textContent = (Number.isInteger(r) ? r : r.toFixed(1)) + "x";
+    store.set("rate", r);
+    document.querySelectorAll("#speedGroup button").forEach(b=>{
+      b.classList.toggle("active", parseFloat(b.dataset.rate)===r);
+    });
+  }
+  document.querySelectorAll("#speedGroup button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      setRate(b.dataset.rate);
+      // apply immediately to the current chunk if playing
+      if(playing && !paused){ synth.cancel(); speakFrom(idx); }
+    });
+  });
   $("pitch").addEventListener("input", e=>{ $("pitchVal").textContent = parseFloat(e.target.value).toFixed(1); store.set("pitch", e.target.value); });
   $("voice").addEventListener("change", e=>store.set("voice", e.target.value));
 
@@ -520,8 +549,7 @@
   (function restore(){
     $("text").value = store.get("text","");
     const r = store.get("rate","1"), p = store.get("pitch","1");
-    $("rate").value = r; $("pitch").value = p;
-    $("rateVal").textContent = parseFloat(r).toFixed(1)+"x";
+    setRate(r); $("pitch").value = p;
     $("pitchVal").textContent = parseFloat(p).toFixed(1);
     applyFontSize(store.get("fs",19));
     rebuild();
