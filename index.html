@@ -110,7 +110,7 @@
   <div id="noVoiceWarn" class="warn">⚠️ この端末で日本語音声が見つかりませんでした。設定で音声パックの追加が必要な場合があります。</div>
 
   <div class="card">
-    <label class="lbl" for="text">本文（Googleドキュメントからコピーして貼り付け）</label>
+    <label class="lbl" for="text">本文（Googleドキュメントからコピーして貼り付け）<span id="count" style="float:right;font-weight:400;color:var(--accent2)"></span></label>
     <textarea id="text" placeholder="ここに文章を貼り付けてください…&#10;&#10;Googleドキュメントを開く → 全選択（Ctrl/⌘+A）→ コピー → ここに貼り付け"></textarea>
     <div class="mini">
       <button id="pasteBtn">📋 クリップボードから貼付</button>
@@ -262,6 +262,10 @@
     store.set("text", raw);
     const arr = splitSentences(raw);
     sentences = arr.map(text=>({text, el:null}));
+    // character / sentence count
+    const chars = raw.length;
+    const noSpace = raw.replace(/\s/g,"").length;
+    $("count").textContent = chars ? `${chars.toLocaleString()}文字（空白除く${noSpace.toLocaleString()}）・${sentences.length}区切り` : "";
     // restore bookmark position if the text matches the saved one
     idx = 0;
     const bm = store.get("bookmark", null);
