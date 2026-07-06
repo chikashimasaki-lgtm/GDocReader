@@ -517,7 +517,7 @@
   $("voice").addEventListener("change", e=>store.set("voice", e.target.value));
 
   // ---- font size ----
-  const FS_MIN=14, FS_MAX=34;
+  const FS_MIN=10, FS_MAX=34;
   function applyFontSize(px){
     px = Math.max(FS_MIN, Math.min(FS_MAX, px));
     document.documentElement.style.setProperty("--reader-fs", px+"px");
