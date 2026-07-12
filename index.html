@@ -542,24 +542,48 @@
     }catch(e){}
     a.playbackRate = r;
   }
+  let netErrs = 0;
   function releaseNet(){
-    if(curAudio){ try{ curAudio.pause(); curAudio.onended=null; curAudio.onerror=null; }catch(e){} }
-    curAudio = null; nextAudio = null; nextIdx = -1;
+    detach(curAudio);
+    curAudio = null; nextAudio = null; nextIdx = -1; netErrs = 0;
+  }
+  function detach(a){
+    if(!a) return;
+    try{ a.pause(); }catch(e){}
+    a.onended = a.onerror = a.onpause = a.onplaying = a.ontimeupdate = null;
   }
   function speakNet(i){
-    if(curAudio){ try{ curAudio.pause(); curAudio.onended=null; curAudio.onerror=null; }catch(e){} }
+    detach(curAudio);
     let a;
     if(nextAudio && nextIdx === i){ a = nextAudio; nextAudio = null; nextIdx = -1; }
     else a = makeNetAudio(i);
     curAudio = a;
     applyRate(a);
     a.onended = ()=>{ if(state!=="playing") return; speakFrom(idx+1); };
-    a.onerror = ()=>{
-      if(state!=="playing") return;
-      $("status").textContent = "車載音声を取得できません → 端末TTSに切替";
-      setEngine("tts");
-      speakFrom(idx);
+    a.onplaying = ()=>{ lastTick = Date.now(); netErrs = 0; };
+    a.ontimeupdate = ()=>{ lastTick = Date.now(); };
+    // 着信・オーディオフォーカス喪失などで勝手に止まったら、その位置から再開
+    a.onpause = ()=>{
+      setTimeout(()=>{
+        if(state==="playing" && curAudio===a && a.paused && !a.ended){
+          a.play().catch(()=>{});
+        }
+      }, 300);
     };
+    a.onerror = ()=>{
+      if(state!=="playing" || curAudio!==a) return;
+      netErrs++;
+      if(netErrs <= 2){          // 一時的な通信断は同じ文でリトライ
+        $("status").textContent = `音声を再取得中…  (${idx+1} / ${sentences.length} 文)`;
+        setTimeout(()=>{ if(state==="playing" && curAudio===a) speakNet(idx); }, 1200);
+      } else {                   // 続けて失敗するなら端末TTSに退避
+        netErrs = 0;
+        $("status").textContent = "車載音声を取得できません → 端末TTSに切替";
+        setEngine("tts");
+        speakFrom(idx);
+      }
+    };
+    lastTick = Date.now();
     a.play().catch(()=>{ /* ユーザー操作待ち等 */ });
     // 次の文を先読みして途切れを減らす
     if(i+1 < sentences.length){ nextAudio = makeNetAudio(i+1); nextIdx = i+1; }
@@ -578,8 +602,15 @@
   async function releaseWakeLock(){
     try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(e){}
   }
+  // 画面消灯・アプリ切替から戻ったとき：ロックを取り直し、音が止まっていれば続きから再開
   document.addEventListener("visibilitychange", ()=>{
-    if(document.visibilityState==="visible" && state==="playing") acquireWakeLock();
+    if(document.visibilityState!=="visible" || state!=="playing") return;
+    acquireWakeLock();
+    startKeepAlive();
+    const dead = engine==="net"
+      ? !(curAudio && !curAudio.paused && !curAudio.ended)
+      : !(synth && (synth.speaking || synth.pending));
+    if(dead) recover();
   });
 
   // ================================================================
@@ -703,19 +734,51 @@
     }
   }
 
-  // ---- stall watchdog（端末TTSが無言で止まる対策） ----
+  // ---- stall watchdog ----
+  // 端末TTSも車載音声も、画面消灯・着信・通信断などで無言のまま
+  // 止まることがある。一定時間音が進んでいなければ、止まった文から自動で続きを再生する。
   let lastTick = 0;
   let watchdog = null;
+  let recoverIdx = -1, recoverCnt = 0;
+
+  // 止まった位置から鳴らし直す
+  function recover(){
+    if(recoverIdx === idx){ recoverCnt++; } else { recoverIdx = idx; recoverCnt = 1; }
+    lastTick = Date.now();
+
+    // 同じ文で何度も失敗するなら、その文は諦めて次へ進む（無限ループ防止）
+    if(recoverCnt > 4){
+      recoverCnt = 0;
+      $("status").textContent = `${idx+1}文目を飛ばしました`;
+      speakFrom(idx+1);
+      return;
+    }
+    if(synth) synth.cancel();
+    if(engine==="net" && curAudio && curAudio.currentTime>0 && !curAudio.ended && curAudio.paused){
+      curAudio.play().catch(()=>{ speakFrom(idx); });   // ファイル途中で止まった → その続きから
+    } else {
+      speakFrom(idx);                                    // 文の頭から鳴らし直す
+    }
+    $("status").textContent = `自動復帰しました  (${idx+1} / ${sentences.length} 文)`;
+  }
+
   function startWatchdog(){
     stopWatchdog();
+    lastTick = Date.now();
     watchdog = setInterval(()=>{
       if(state!=="playing") return;
-      if(engine!=="tts" || !synth) return;
-      if(synth.speaking || synth.pending) return;
-      if(Date.now() - lastTick > 2500){
-        synth.cancel();
-        speakFrom(idx);
+      const idle = Date.now() - lastTick;
+
+      if(engine==="net"){
+        if(!curAudio){ if(idle > 2500) recover(); return; }
+        if(curAudio.ended) return;                       // onended が次の文へ進める
+        if(curAudio.paused){ if(idle > 1500) recover(); }// 着信などで勝手に止まった
+        else if(idle > 6000) recover();                  // 再生中のはずが進まない（通信詰まり）
+        return;
       }
+      // 端末TTS：onstart/onboundary が lastTick を更新する
+      if(synth && (synth.speaking || synth.pending)){ lastTick = Date.now(); return; }
+      if(idle > 2500) recover();
     }, 1000);
   }
   function stopWatchdog(){ if(watchdog){ clearInterval(watchdog); watchdog = null; } }
