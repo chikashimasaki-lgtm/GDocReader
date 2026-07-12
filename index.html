@@ -26,7 +26,7 @@
   }
   header h1{margin:0;font-size:17px;font-weight:600}
   header p{margin:3px 0 0;font-size:12px;color:var(--muted)}
-  main{max-width:none;width:100%;margin:0;padding:14px 14px 170px}
+  main{max-width:none;width:100%;margin:0;padding:14px 14px 240px}
 
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px}
   label.lbl{display:block;font-size:12px;color:var(--muted);margin:0 0 6px;font-weight:600}
@@ -49,17 +49,14 @@
     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%238b949e' stroke-width='1.5' fill='none'/></svg>");
     background-repeat:no-repeat; background-position:right 12px center;
   }
-
-  .slider-wrap{margin-top:4px}
-  .slider-wrap .top{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:2px}
-  .slider-wrap .top b{color:var(--text);font-weight:600}
-  input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+  select:disabled{opacity:.45}
 
   .grp-top{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
   .grp-top b{color:var(--text);font-weight:600}
-  .speed-group{display:flex;gap:6px}
-  .speed-group button{flex:1;padding:12px 2px;font-size:14px}
-  .speed-group button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .seg{display:flex;gap:6px}
+  .seg button{flex:1;padding:12px 2px;font-size:14px}
+  .seg button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .seg.pitch button{font-size:12px;padding:11px 2px}
 
   /* Reading view */
   #reader{
@@ -85,8 +82,31 @@
     box-shadow:0 -4px 20px rgba(0,0,0,.25);
   }
   .dock-inner{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
-  .progress{height:5px;background:var(--panel2);border-radius:99px;overflow:hidden}
-  .progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+
+  /* 太いシークバー（タップ／ドラッグで移動） */
+  .seek{
+    position:relative; height:34px; border-radius:12px;
+    background:var(--panel2); border:1px solid var(--border);
+    overflow:hidden; touch-action:none; cursor:pointer; user-select:none;
+  }
+  .seek.drag{border-color:var(--accent)}
+  .seek i{
+    position:absolute; left:0; top:0; bottom:0; width:0;
+    background:linear-gradient(90deg,#1f6feb,var(--accent2));
+    transition:width .2s;
+  }
+  .seek.drag i{transition:none}
+  .seek .knob{
+    position:absolute; top:50%; left:0; width:6px; height:20px; margin-left:-3px;
+    transform:translateY(-50%); border-radius:99px; background:#fff;
+    box-shadow:0 0 0 2px rgba(0,0,0,.35); transition:left .2s;
+  }
+  .seek.drag .knob{transition:none;width:8px;height:26px;margin-left:-4px}
+  .seek .seek-label{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:600; color:var(--text); pointer-events:none;
+    text-shadow:0 1px 3px rgba(0,0,0,.8);
+  }
   .btns{display:flex;gap:8px}
   button{
     font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;
@@ -139,36 +159,61 @@
   </div>
 
   <div class="card">
-    <label class="lbl" for="voice">音声</label>
-    <select id="voice"></select>
+    <div class="grp-top"><span>音声エンジン</span><b id="engineVal">端末TTS</b></div>
+    <div class="seg" id="engineGroup">
+      <button data-engine="tts">📱 端末TTS</button>
+      <button data-engine="net">🚗 車載音声</button>
+    </div>
+    <p class="hint" id="engineHint">
+      Android Autoやカーオーディオで<b>音が出ない場合は「車載音声」</b>に切り替えてください。YouTubeと同じメディア音声として再生するため、車のスピーカーに確実に流れます（通信量が少し発生します／音の高さの変更は端末TTSのみ）。
+    </p>
 
     <div style="margin-top:12px">
+      <label class="lbl" for="voice">音声（端末TTS）</label>
+      <select id="voice"></select>
+    </div>
+
+    <div style="margin-top:14px">
       <div class="grp-top"><span>速度</span><b id="rateVal">1x</b></div>
-      <div class="speed-group" id="speedGroup">
+      <div class="seg" id="speedGroup">
         <button data-rate="1">1x</button>
         <button data-rate="1.5">1.5x</button>
         <button data-rate="2">2x</button>
-        <button data-rate="3">3x</button>
-        <button data-rate="4">4x</button>
         <button data-rate="5">5x</button>
+        <button data-rate="7">7x</button>
       </div>
       <input type="hidden" id="rate" value="1">
     </div>
 
-    <div class="slider-wrap" style="margin-top:14px">
-      <div class="top"><span>音の高さ</span><b id="pitchVal">1.0</b></div>
-      <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
+    <div style="margin-top:14px">
+      <div class="grp-top"><span>音の高さ</span><b id="pitchVal">標準</b></div>
+      <div class="seg pitch" id="pitchGroup">
+        <button data-pitch="0.6">低い</button>
+        <button data-pitch="0.8">やや低</button>
+        <button data-pitch="1">標準</button>
+        <button data-pitch="1.3">やや高</button>
+        <button data-pitch="1.6">高い</button>
+      </div>
+      <input type="hidden" id="pitch" value="1">
     </div>
   </div>
 </main>
 
 <div class="dock">
   <div class="dock-inner">
-    <div class="progress"><i id="bar"></i></div>
+    <div class="seek" id="seek" role="slider" aria-label="読み上げ位置" tabindex="0">
+      <i id="bar"></i>
+      <span class="knob" id="knob"></span>
+      <span class="seek-label" id="seekLabel">0 / 0 文</span>
+    </div>
     <div class="btns">
       <button id="playBtn" class="primary"><span class="icon">▶</span><span id="playLabel">再生</span></button>
       <button id="pauseBtn" disabled><span class="icon">⏸</span>一時停止</button>
       <button id="stopBtn" disabled><span class="icon">⏹</span>停止</button>
+    </div>
+    <div class="btns">
+      <button id="prevBtn"><span class="icon">⏮</span>前の文</button>
+      <button id="nextBtn"><span class="icon">⏭</span>次の文</button>
     </div>
     <div class="status" id="status">待機中</div>
   </div>
@@ -180,18 +225,12 @@
   const $ = id => document.getElementById(id);
   const synth = window.speechSynthesis;
 
-  if(!synth){
-    $("status").textContent = "この端末は読み上げに対応していません";
-    document.querySelectorAll("button,select,input").forEach(e=>e.disabled=true);
-    return;
-  }
-
   // ---- state ----
   let sentences = [];   // {text, el}
   let idx = 0;          // current sentence index
-  let playing = false;
-  let paused = false;
+  let state = "idle";   // "idle" | "playing" | "paused"
   let voices = [];
+  let engine = "tts";   // "tts" | "net"
 
   // ---- persistence ----
   const store = {
@@ -199,10 +238,74 @@
     set(k,v){ try{ localStorage.setItem("gdr_"+k, JSON.stringify(v)); }catch(e){} }
   };
 
+  // ================================================================
+  //  Android Auto / カーオーディオ対策
+  //  端末TTS(Web Speech)の音声は「メディア音声」として扱われないため、
+  //  車側では無音になることがある。ほぼ無音のループ音源を鳴らして
+  //  メディア音声セッション（オーディオフォーカス）を保持し続けることで、
+  //  TTSも車のスピーカー側にルーティングされるようにする。
+  // ================================================================
+  function silentWavUrl(){
+    const sr = 8000, n = sr; // 1秒
+    const buf = new ArrayBuffer(44 + n*2), dv = new DataView(buf);
+    const w = (o,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); };
+    w(0,"RIFF"); dv.setUint32(4, 36+n*2, true); w(8,"WAVEfmt ");
+    dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+    dv.setUint32(24,sr,true); dv.setUint32(28,sr*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true);
+    w(36,"data"); dv.setUint32(40, n*2, true);
+    // 完全な無音だとブラウザがメディア再生とみなさないことがあるため、
+    // 可聴域に達しない最小振幅のディザを入れる
+    for(let i=0;i<n;i++) dv.setInt16(44+i*2, (i%2 ? 1 : -1), true);
+    let bin = ""; const u8 = new Uint8Array(buf);
+    for(let i=0;i<u8.length;i++) bin += String.fromCharCode(u8[i]);
+    return "data:audio/wav;base64," + btoa(bin);
+  }
+
+  let keepAlive = null;
+  function startKeepAlive(){
+    try{
+      if(!keepAlive){
+        keepAlive = new Audio(silentWavUrl());
+        keepAlive.loop = true;
+        keepAlive.volume = 1;
+      }
+      if(keepAlive.paused) keepAlive.play().catch(()=>{});
+    }catch(e){}
+  }
+  function stopKeepAlive(){
+    try{ if(keepAlive) keepAlive.pause(); }catch(e){}
+  }
+
+  // ---- MediaSession（Android Auto / ロック画面 / ステアリングスイッチ操作） ----
+  const ms = navigator.mediaSession || null;
+  function updateMeta(){
+    if(!ms || !window.MediaMetadata) return;
+    const cur = sentences[idx] ? sentences[idx].text.slice(0,60) : "";
+    try{
+      ms.metadata = new MediaMetadata({
+        title: cur || "ドキュメント読み上げ",
+        artist: sentences.length ? `${idx+1} / ${sentences.length} 文` : "",
+        album: "GDocReader"
+      });
+    }catch(e){}
+  }
+  function setMsState(s){ try{ if(ms) ms.playbackState = s; }catch(e){} }
+  function initMediaSession(){
+    if(!ms || !ms.setActionHandler) return;
+    const h = (n,f)=>{ try{ ms.setActionHandler(n,f); }catch(e){} };
+    h("play", play);
+    h("pause", pause);
+    h("stop", stop);
+    h("nexttrack", ()=>{ if(idx+1 < sentences.length) jumpTo(idx+1); });
+    h("previoustrack", ()=>{ if(idx > 0) jumpTo(idx-1); });
+    h("seekforward", ()=>{ jumpTo(Math.min(idx+5, sentences.length-1)); });
+    h("seekbackward", ()=>{ jumpTo(Math.max(idx-5, 0)); });
+  }
+  initMediaSession();
+
   // ---- split text into sentences ----
   function splitSentences(t){
     if(!t.trim()) return [];
-    // split keeping delimiters; break on 。！？!? and newlines
     const parts = [];
     let buf = "";
     for(const ch of t){
@@ -213,19 +316,17 @@
       }
     }
     if(buf.trim()) parts.push(buf.trim());
-    // merge tiny fragments (e.g. lone quotes) into previous
     const out = [];
     for(const p of parts){
       if(out.length && p.length<=1){ out[out.length-1]+=p; }
       else out.push(p);
     }
-    // split segments that are too long for one utterance (mobile ~15s cutoff)
     const chunked = [];
     for(const p of out){ for(const c of splitLong(p)) chunked.push(c); }
     return chunked;
   }
 
-  // break an over-long segment at 読点/空白 near the limit, else hard-cut
+  // 長すぎる区切りを分割（モバイルTTSの途中切れ対策 & ネット音声の文字数上限対策）
   const MAX_CHUNK = 100;
   function splitLong(s){
     if(s.length <= MAX_CHUNK) return [s];
@@ -261,25 +362,18 @@
     });
   }
 
-  // signature of current text (for bookmark keying)
-  function textSig(t){
-    return t.length + ":" + t.slice(0,24).replace(/\s/g,"");
-  }
+  function textSig(t){ return t.length + ":" + t.slice(0,24).replace(/\s/g,""); }
   function saveBookmark(){
-    const raw = $("text").value;
-    store.set("bookmark", {sig:textSig(raw), idx:idx});
+    store.set("bookmark", {sig:textSig($("text").value), idx:idx});
   }
 
   function rebuild(){
     const raw = $("text").value;
     store.set("text", raw);
-    const arr = splitSentences(raw);
-    sentences = arr.map(text=>({text, el:null}));
-    // character / sentence count
+    sentences = splitSentences(raw).map(text=>({text, el:null}));
     const chars = raw.length;
     const noSpace = raw.replace(/\s/g,"").length;
     $("count").textContent = chars ? `${chars.toLocaleString()}文字（空白除く${noSpace.toLocaleString()}）・${sentences.length}区切り` : "";
-    // restore bookmark position if the text matches the saved one
     idx = 0;
     const bm = store.get("bookmark", null);
     const note = $("bmkNote");
@@ -293,7 +387,7 @@
     renderReader();
     if(idx>0) highlight(idx);
     updateBar();
-    if(typeof setButtons==="function") setButtons();
+    setButtons();
   }
 
   function highlight(i){
@@ -309,47 +403,101 @@
   }
 
   function updateBar(){
-    const pct = sentences.length ? (idx/sentences.length)*100 : 0;
+    const n = sentences.length;
+    const pct = n ? (idx/Math.max(n-1,1))*100 : 0;
     $("bar").style.width = pct + "%";
+    $("knob").style.left = pct + "%";
+    $("seekLabel").textContent = n ? `${idx+1} / ${n} 文` : "0 / 0 文";
   }
 
-  // ---- voices ----
+  // ---- シークバー：タップ／ドラッグで読み上げ位置を移動 ----
+  (function initSeek(){
+    const seek = $("seek");
+    let dragging = false;
+
+    const idxFromX = x=>{
+      const r = seek.getBoundingClientRect();
+      const p = Math.max(0, Math.min(1, (x - r.left) / r.width));
+      return Math.round(p * Math.max(sentences.length-1, 0));
+    };
+    // ドラッグ中は音声を切らずにプレビュー表示だけ更新する
+    const preview = i=>{
+      const n = sentences.length; if(!n) return;
+      const pct = (i/Math.max(n-1,1))*100;
+      $("bar").style.width = pct + "%";
+      $("knob").style.left = pct + "%";
+      $("seekLabel").textContent = `${i+1} / ${n} 文`;
+      highlight(i);
+    };
+
+    seek.addEventListener("pointerdown", e=>{
+      if(!sentences.length) return;
+      dragging = true;
+      seek.classList.add("drag");
+      seek.setPointerCapture(e.pointerId);
+      preview(idxFromX(e.clientX));
+    });
+    seek.addEventListener("pointermove", e=>{
+      if(!dragging) return;
+      preview(idxFromX(e.clientX));
+    });
+    const end = e=>{
+      if(!dragging) return;
+      dragging = false;
+      seek.classList.remove("drag");
+      jumpTo(idxFromX(e.clientX));   // 離した位置から再生（再生中なら即その文へ）
+    };
+    seek.addEventListener("pointerup", end);
+    seek.addEventListener("pointercancel", ()=>{
+      dragging = false; seek.classList.remove("drag"); updateBar(); highlight(state==="idle"?-1:idx);
+    });
+  })();
+
+  // ---- voices（端末TTS） ----
   function loadVoices(){
+    if(!synth) return;
     voices = synth.getVoices();
     const sel = $("voice");
     const prev = store.get("voice", null);
     sel.innerHTML = "";
-    // Japanese first, then others
     const ja = voices.filter(v=>/ja|JP/i.test(v.lang));
     const other = voices.filter(v=>!/ja|JP/i.test(v.lang));
     const ordered = [...ja, ...other];
     if(voices.length===0) return;
-    $("noVoiceWarn").style.display = ja.length? "none":"block";
+    $("noVoiceWarn").style.display = (ja.length || engine==="net") ? "none" : "block";
     ordered.forEach(v=>{
       const o = document.createElement("option");
       o.value = v.name;
       o.textContent = `${v.name} (${v.lang})` + (v.default?" ★":"");
       sel.appendChild(o);
     });
-    // restore selection, else first Japanese
     if(prev && ordered.some(v=>v.name===prev)) sel.value = prev;
     else if(ja.length) sel.value = ja[0].name;
   }
-  loadVoices();
-  synth.onvoiceschanged = loadVoices;
+  if(synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
 
   function currentVoice(){
     const name = $("voice").value;
     return voices.find(v=>v.name===name) || null;
   }
 
-  // ---- playback ----
+  // ================================================================
+  //  再生エンジン
+  // ================================================================
   function speakFrom(i){
     if(i>=sentences.length){ finish(); return; }
     idx = i;
     saveBookmark();
     highlight(idx);
     updateBar();
+    updateMeta();
+    $("status").textContent = `再生中  (${i+1} / ${sentences.length} 文)`;
+    if(engine === "net") speakNet(i);
+    else speakTTS(i);
+  }
+
+  // ---- (A) 端末TTS：Web Speech API ----
+  function speakTTS(i){
     const u = new SpeechSynthesisUtterance(sentences[i].text);
     const v = currentVoice();
     if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = "ja-JP"; }
@@ -358,8 +506,7 @@
     u.onstart = ()=>{ lastTick = Date.now(); };
     u.onboundary = ()=>{ lastTick = Date.now(); };
     u.onend = ()=>{
-      if(!playing) return;      // stopped
-      if(paused) return;        // will resume manually
+      if(state!=="playing") return;
       lastTick = Date.now();
       speakFrom(idx+1);
     };
@@ -370,10 +517,55 @@
     };
     lastTick = Date.now();
     synth.speak(u);
-    $("status").textContent = `再生中  (${i+1} / ${sentences.length} 文)`;
   }
 
-  // ---- wake lock (keep screen on while reading) ----
+  // ---- (B) 車載音声：実音声ファイルをメディア再生（YouTubeと同じ経路） ----
+  const NET_MAX = 190; // ネットTTSの1リクエスト上限（安全側）
+  function netUrl(text){
+    return "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ja&q="
+      + encodeURIComponent(text.slice(0, NET_MAX));
+  }
+  let curAudio = null, nextAudio = null, nextIdx = -1;
+
+  function makeNetAudio(i){
+    const a = new Audio();
+    a.preload = "auto";
+    a.src = netUrl(sentences[i].text);
+    return a;
+  }
+  function applyRate(a){
+    const r = parseFloat($("rate").value);
+    try{
+      a.preservesPitch = true;
+      a.mozPreservesPitch = true;
+      a.webkitPreservesPitch = true;
+    }catch(e){}
+    a.playbackRate = r;
+  }
+  function releaseNet(){
+    if(curAudio){ try{ curAudio.pause(); curAudio.onended=null; curAudio.onerror=null; }catch(e){} }
+    curAudio = null; nextAudio = null; nextIdx = -1;
+  }
+  function speakNet(i){
+    if(curAudio){ try{ curAudio.pause(); curAudio.onended=null; curAudio.onerror=null; }catch(e){} }
+    let a;
+    if(nextAudio && nextIdx === i){ a = nextAudio; nextAudio = null; nextIdx = -1; }
+    else a = makeNetAudio(i);
+    curAudio = a;
+    applyRate(a);
+    a.onended = ()=>{ if(state!=="playing") return; speakFrom(idx+1); };
+    a.onerror = ()=>{
+      if(state!=="playing") return;
+      $("status").textContent = "車載音声を取得できません → 端末TTSに切替";
+      setEngine("tts");
+      speakFrom(idx);
+    };
+    a.play().catch(()=>{ /* ユーザー操作待ち等 */ });
+    // 次の文を先読みして途切れを減らす
+    if(i+1 < sentences.length){ nextAudio = makeNetAudio(i+1); nextIdx = i+1; }
+  }
+
+  // ---- wake lock ----
   let wakeLock = null;
   async function acquireWakeLock(){
     try{
@@ -381,108 +573,146 @@
         wakeLock = await navigator.wakeLock.request("screen");
         wakeLock.addEventListener("release", ()=>{ wakeLock = null; });
       }
-    }catch(e){ /* not supported / denied */ }
+    }catch(e){}
   }
   async function releaseWakeLock(){
     try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(e){}
   }
-  // re-acquire if returning to the tab while still playing
   document.addEventListener("visibilitychange", ()=>{
-    if(document.visibilityState==="visible" && playing && !paused) acquireWakeLock();
+    if(document.visibilityState==="visible" && state==="playing") acquireWakeLock();
   });
 
-  function play(){
-    if(sentences.length===0){ $("status").textContent = "本文がありません"; return; }
-    // iOS: cancel any leftover queue before starting
-    synth.cancel();
-    playing = true; paused = false;
-    $("bmkNote").style.display = "none";
-    acquireWakeLock();
-    startWatchdog();
-    setButtons();
-    speakFrom(idx>=sentences.length?0:idx);
+  // ================================================================
+  //  再生 / 一時停止 / 停止 の状態遷移
+  //
+  //    state = "idle" | "playing" | "paused"
+  //
+  //    ▶ 再生   idle   → playing（現在の位置から読み始める）
+  //             paused → playing（止めた文の続きから再開）
+  //             playing では無効
+  //    ⏸ 一時停止 playing → paused（位置を保持して音だけ止める）
+  //             それ以外では無効
+  //    ⏹ 停止   playing/paused → idle（位置を1文目に戻す）
+  //             idle では無効
+  //    最後まで読み終えると自動で idle（位置は1文目に戻す）
+  // ================================================================
+
+  // 音を止める（位置・状態は触らない）
+  function silence(){
+    if(synth) synth.cancel();
+    if(engine==="net" && curAudio){ try{ curAudio.pause(); }catch(e){} }
+    stopWatchdog();
+  }
+  // 再生に必要なリソースを確保／解放
+  function acquireAudio(){ startKeepAlive(); acquireWakeLock(); startWatchdog(); }
+  function releaseAudio(){ stopKeepAlive(); releaseWakeLock(); stopWatchdog(); }
+
+  function setState(s){
+    state = s;
+    setMsState(s==="playing" ? "playing" : s==="paused" ? "paused" : "none");
+    render();
   }
 
-  function pause(){
-    if(!playing) return;
-    if(!paused){
-      paused = true;
-      // iOS Safari pause() is unreliable → cancel and remember position
-      synth.cancel();
-      saveBookmark();
-      releaseWakeLock();
-      stopWatchdog();
-      $("status").textContent = "一時停止中";
-      $("pauseBtn").innerHTML = '<span class="icon">⏵</span>再開';
+  // 状態からボタンの有効/無効とラベルを決める（唯一の描画経路）
+  function render(){
+    const has = sentences.length > 0;
+    $("playBtn").disabled  = !has || state==="playing";
+    $("pauseBtn").disabled = state!=="playing";
+    $("stopBtn").disabled  = state==="idle";
+    $("prevBtn").disabled  = !has;
+    $("nextBtn").disabled  = !has;
+    $("playLabel").textContent =
+      state==="paused" ? "再開" : (idx>0 && state==="idle" ? "続きから" : "再生");
+  }
+  const setButtons = render;   // 旧名の互換
+
+  // ▶ 再生（停止中＝現在位置から / 一時停止中＝続きから再開）
+  function play(){
+    if(sentences.length===0){ $("status").textContent = "本文がありません"; return; }
+    if(state==="playing") return;
+
+    const resuming = (state==="paused");
+    $("bmkNote").style.display = "none";
+    acquireAudio();
+
+    // 一時停止した音声ファイルが途中なら、その続きから鳴らす
+    const canResumeNet = resuming && engine==="net" &&
+                         curAudio && curAudio.currentTime>0 && !curAudio.ended;
+    setState("playing");
+    if(canResumeNet){
+      curAudio.play().catch(()=>{});
+      $("status").textContent = `再生中  (${idx+1} / ${sentences.length} 文)`;
     } else {
-      paused = false;
-      acquireWakeLock();
+      silence();                 // 前の発話が残っていれば捨てる
       startWatchdog();
-      $("pauseBtn").innerHTML = '<span class="icon">⏸</span>一時停止';
-      speakFrom(idx);
+      speakFrom(idx >= sentences.length ? 0 : idx);
     }
   }
 
+  // ⏸ 一時停止（位置は保持。再開は再生ボタン）
+  function pause(){
+    if(state!=="playing") return;
+    silence();
+    releaseWakeLock();
+    stopKeepAlive();
+    saveBookmark();
+    setState("paused");
+    $("status").textContent = `一時停止中  (${idx+1} / ${sentences.length} 文)`;
+  }
+
+  // ⏹ 停止（読み上げを終了し、位置を先頭へ戻す）
   function stop(){
-    playing = false; paused = false;
-    synth.cancel();
-    releaseWakeLock();
-    stopWatchdog();
+    if(state==="idle") return;
+    silence();
+    releaseNet();
+    releaseAudio();
     idx = 0;
     saveBookmark();
     highlight(-1);
     updateBar();
-    setButtons();
-    $("status").textContent = "停止しました";
-    $("pauseBtn").innerHTML = '<span class="icon">⏸</span>一時停止';
+    setState("idle");
+    $("status").textContent = "停止しました（先頭に戻りました）";
   }
 
+  // 最終文まで読み終えた
   function finish(){
-    playing = false; paused = false;
-    releaseWakeLock();
-    stopWatchdog();
-    highlight(-1);
+    silence();
+    releaseNet();
+    releaseAudio();
     idx = 0;
     saveBookmark();
+    highlight(-1);
     updateBar();
-    setButtons();
+    setState("idle");
     $("status").textContent = "読み上げ完了 ✓";
-    $("pauseBtn").innerHTML = '<span class="icon">⏸</span>一時停止';
   }
 
+  // 位置移動（再生中ならその文から鳴らし直す。一時停止中は位置だけ動かす）
   function jumpTo(i){
     idx = i;
-    if(playing){
-      paused = false;
-      $("pauseBtn").innerHTML = '<span class="icon">⏸</span>一時停止';
-      synth.cancel();
+    saveBookmark();
+    if(state==="playing"){
+      silence();
+      releaseNet();
+      startWatchdog();
       speakFrom(i);
     } else {
       highlight(i);
       updateBar();
-      saveBookmark();
+      render();
     }
   }
 
-  function setButtons(){
-    $("playBtn").disabled = playing;
-    $("pauseBtn").disabled = !playing;
-    $("stopBtn").disabled = !playing;
-    $("playLabel").textContent = idx>0 && !playing ? "続きから" : "再生";
-  }
-
-  // ---- stall watchdog ----
-  // Mobile browsers can silently stop speech without firing onend.
-  // If nothing has been spoken for a while, resume from the current chunk.
+  // ---- stall watchdog（端末TTSが無言で止まる対策） ----
   let lastTick = 0;
   let watchdog = null;
   function startWatchdog(){
     stopWatchdog();
     watchdog = setInterval(()=>{
-      if(!playing || paused) return;
+      if(state!=="playing") return;
+      if(engine!=="tts" || !synth) return;
       if(synth.speaking || synth.pending) return;
       if(Date.now() - lastTick > 2500){
-        // speech died mid-way → restart current chunk
         synth.cancel();
         speakFrom(idx);
       }
@@ -490,13 +720,30 @@
   }
   function stopWatchdog(){ if(watchdog){ clearInterval(watchdog); watchdog = null; } }
 
-  // ---- events ----
-  $("text").addEventListener("input", ()=>{ if(!playing) rebuild(); });
-  $("playBtn").addEventListener("click", play);
-  $("pauseBtn").addEventListener("click", pause);
-  $("stopBtn").addEventListener("click", stop);
+  // ================================================================
+  //  設定UI
+  // ================================================================
+  function setEngine(e){
+    engine = (e==="net") ? "net" : "tts";
+    store.set("engine", engine);
+    $("engineVal").textContent = engine==="net" ? "車載音声" : "端末TTS";
+    document.querySelectorAll("#engineGroup button").forEach(b=>{
+      b.classList.toggle("active", b.dataset.engine===engine);
+    });
+    $("voice").disabled = (engine==="net");
+    document.querySelectorAll("#pitchGroup button").forEach(b=>{ b.disabled = (engine==="net"); });
+    if(engine==="net") $("noVoiceWarn").style.display = "none";
+  }
+  document.querySelectorAll("#engineGroup button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const wasPlaying = (state==="playing");
+      if(synth) synth.cancel();
+      releaseNet();
+      setEngine(b.dataset.engine);
+      if(wasPlaying) speakFrom(idx);
+    });
+  });
 
-  // ---- speed presets ----
   function setRate(r){
     r = parseFloat(r);
     $("rate").value = r;
@@ -509,12 +756,29 @@
   document.querySelectorAll("#speedGroup button").forEach(b=>{
     b.addEventListener("click", ()=>{
       setRate(b.dataset.rate);
-      // apply immediately to the current chunk if playing
-      if(playing && !paused){ synth.cancel(); speakFrom(idx); }
+      if(state==="playing"){
+        if(engine==="net" && curAudio){ applyRate(curAudio); }   // 再取得なしで即反映
+        else { if(synth) synth.cancel(); speakFrom(idx); }
+      }
     });
   });
-  $("pitch").addEventListener("input", e=>{ $("pitchVal").textContent = parseFloat(e.target.value).toFixed(1); store.set("pitch", e.target.value); });
-  $("voice").addEventListener("change", e=>store.set("voice", e.target.value));
+
+  const PITCH_LABEL = {"0.6":"低い","0.8":"やや低","1":"標準","1.3":"やや高","1.6":"高い"};
+  function setPitch(p){
+    const key = String(parseFloat(p));
+    $("pitch").value = key;
+    $("pitchVal").textContent = PITCH_LABEL[key] || key;
+    store.set("pitch", key);
+    document.querySelectorAll("#pitchGroup button").forEach(b=>{
+      b.classList.toggle("active", parseFloat(b.dataset.pitch)===parseFloat(key));
+    });
+  }
+  document.querySelectorAll("#pitchGroup button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      setPitch(b.dataset.pitch);
+      if(state==="playing" && engine==="tts"){ if(synth) synth.cancel(); speakFrom(idx); }
+    });
+  });
 
   // ---- font size ----
   const FS_MIN=10, FS_MAX=34;
@@ -528,7 +792,15 @@
   $("fsUp").addEventListener("click", ()=>applyFontSize((store.get("fs",19))+2));
   $("fsDown").addEventListener("click", ()=>applyFontSize((store.get("fs",19))-2));
 
-  // ---- bookmark jump ----
+  // ---- events ----
+  $("text").addEventListener("input", ()=>{ if(state==="idle") rebuild(); });
+  $("playBtn").addEventListener("click", play);
+  $("pauseBtn").addEventListener("click", pause);
+  $("stopBtn").addEventListener("click", stop);
+  $("prevBtn").addEventListener("click", ()=>{ if(sentences.length) jumpTo(Math.max(idx-1, 0)); });
+  $("nextBtn").addEventListener("click", ()=>{ if(sentences.length) jumpTo(Math.min(idx+1, sentences.length-1)); });
+  $("voice").addEventListener("change", e=>store.set("voice", e.target.value));
+
   $("bmkGo").addEventListener("click", ()=>{
     const bm = store.get("bookmark", null);
     if(bm && bm.idx>0 && bm.idx<sentences.length){ jumpTo(bm.idx); $("bmkNote").style.display="none"; }
@@ -548,15 +820,17 @@
   // ---- restore ----
   (function restore(){
     $("text").value = store.get("text","");
-    const r = store.get("rate","1"), p = store.get("pitch","1");
-    setRate(r); $("pitch").value = p;
-    $("pitchVal").textContent = parseFloat(p).toFixed(1);
+    setEngine(store.get("engine", synth ? "tts" : "net"));
+    setRate(store.get("rate", 1));
+    setPitch(store.get("pitch", 1));
     applyFontSize(store.get("fs",19));
     rebuild();
+    if(!synth){
+      $("status").textContent = "この端末は端末TTS非対応です（車載音声をお使いください）";
+    }
   })();
 
-  // stop speech when leaving page
-  window.addEventListener("pagehide", ()=>synth.cancel());
+  window.addEventListener("pagehide", ()=>{ if(synth) synth.cancel(); releaseNet(); stopKeepAlive(); });
 })();
 </script>
 </body>
